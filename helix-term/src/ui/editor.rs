@@ -33,7 +33,7 @@ use tui::buffer::Buffer as Surface;
 pub struct EditorView {
     pub keymaps: Keymaps,
     on_next_key: Option<Box<dyn FnOnce(&mut commands::Context, KeyEvent)>>,
-    last_insert: (commands::MappableCommand, Vec<InsertEvent>),
+    last_insert: (Vec<commands::MappableCommand>, Vec<InsertEvent>),
     pub(crate) completion: Option<Completion>,
     spinners: ProgressSpinners,
 }
@@ -56,7 +56,7 @@ impl EditorView {
         Self {
             keymaps,
             on_next_key: None,
-            last_insert: (commands::MappableCommand::normal_mode, Vec::new()),
+            last_insert: (vec![commands::MappableCommand::normal_mode], Vec::new()),
             completion: None,
             spinners: ProgressSpinners::default(),
         }
@@ -859,8 +859,10 @@ impl EditorView {
             }
             // special handling for repeat operator
             (key!('.'), _) if self.keymaps.pending().is_empty() => {
-                // first execute whatever put us into insert mode
-                self.last_insert.0.execute(cxt);
+                for cmd in self.last_insert.0.iter_mut() {
+                    // first execute whatever put us into insert mode
+                    cmd.execute(cxt);
+                }
                 // then replay the inputs
                 for key in self.last_insert.1.clone() {
                     match key {
@@ -1287,8 +1289,10 @@ impl Component for EditorView {
                         // we can repeat the side effect.
 
                         self.last_insert.0 = match self.keymaps.get(mode, key) {
-                            KeymapResult::Matched(command) => command,
-                            // FIXME: insert mode can only be entered through single KeyCodes
+                            KeymapResult::Matched(command) => vec![command],
+                            KeymapResult::MatchedSequence(commands) => commands,
+
+                            // FIXME: insert mode can only be entered through single KeyCodes.
                             _ => unimplemented!(),
                         };
                         self.last_insert.1.clear();
